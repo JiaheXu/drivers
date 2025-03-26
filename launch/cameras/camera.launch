@@ -1,0 +1,41 @@
+<launch>
+  <arg name="output" default="screen" />
+  <arg name="camera_id" default="0" />
+  <arg name="cam_name" default="camera_$(arg camera_id)" />
+  <arg name="pipeline_source" default="nvarguscamerasrc sensor-id=$(arg camera_id) name=mysource" />
+  <arg name="width" default="816" />
+  <arg name="height" default="686" />
+  <arg name="frame_rate" default="24" />
+  <arg name="frame_id" default="cam_$(arg camera_id)" />
+  <arg name="super_odom" default="false" />
+  <arg name="multicast_port" default="$(eval 6000 + camera_id)" />
+  <arg name="multicast_addr" default="$(optenv MMPUG_MULTICAST_ADDR 0.0.0.0)" /> 
+  <arg name="initialization_delay" default="$(eval 0 if camera_id == 0 else 2 * camera_id)" />
+
+
+  <group if="$(arg super_odom)">
+    <node pkg="gscam" type="gscam" name="cam_$(arg camera_id)" output="screen">
+    <param name="gscam_config" value="nvarguscamerasrc sensor-id=$(arg camera_id) name=mysource ! video/x-raw(memory:NVMM), width=480,height=320, format=NV12, framerate=12/1 ! tee name=t  
+t. ! nvvidconv flip-method=0 ! video/x-raw, format=BGRx ! videoscale ! video/x-raw,width=480,height=320 ! videoconvert name=app_attach
+t. ! nvvidconv ! video/x-raw ! videomixer name=m ! omxh264enc bitrate=1000000 control-rate=constant vbv-size=1  EnableTwopassCBR=true iframeinterval=60 ! video/x-h264,stream-format=byte-stream ! h264parse ! rtph264pay ! udpsink async=0 host=0.0.0.0 port=$(arg multicast_port)" />
+    <param name="camera_name" value="$(arg cam_name)" />
+    <param name="use_nvargus_timestamps" value="true" />
+    <param name="frame_id" value = "$(arg frame_id)" />
+    <param name="initialization_delay" value="$(arg initialization_delay)" />
+  </node> 
+  </group>  
+  
+  <group unless="$(arg super_odom)">
+  <!-- Start the GSCAM node -->
+    <node pkg="gscam" type="gscam" name="cam_$(arg camera_id)" output="screen">
+      <param name="gscam_config" value="nvarguscamerasrc sensor-id=$(arg camera_id) name=mysource ! video/x-raw(memory:NVMM), width=816,height=686, format=NV12, framerate=12/1 ! tee name=t  
+  t. ! nvvidconv flip-method=0 ! video/x-raw, format=BGRx ! videoscale ! video/x-raw,width=1600,height=1600 ! videoconvert name=app_attach
+  t. ! nvvidconv ! video/x-raw ! videomixer name=m ! omxh264enc bitrate=4000000 control-rate=3 vbv-size=1  EnableTwopassCBR=true iframeinterval=12 ! video/x-h264,stream-format=byte-stream ! h264parse ! rtph264pay ! udpsink async=0 host=$(arg multicast_addr) port=$(arg multicast_port)" />
+      <param name="camera_name" value="$(arg cam_name)" />
+      <param name="use_nvargus_timestamps" value="true" />
+      <param name="frame_id" value = "$(arg frame_id)" />
+      <param name="initialization_delay" value="$(arg initialization_delay)" />
+    </node>
+  </group>
+
+</launch>

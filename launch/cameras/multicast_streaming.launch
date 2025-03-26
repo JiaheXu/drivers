@@ -1,0 +1,11 @@
+<launch>
+  <arg name="output"        default="screen" />
+
+  <node name="multicast_streamer" pkg="gscam" type="multicast_stream_node" output="$(arg output)">
+    <param name="camera_name" value="default"/>
+    <param name="gscam_config" value="udpsrc multicast-group=%s port=%d ! application/x-rtp, encoding-name=H264 ! rtph264depay ! h264parse ! avdec_h264 ! videoconvert name=app_attach" />
+    <param name="frame_id" value="cameras"/>
+    <param name="use_nvargus_timestamps" value="false" />
+  </node>
+
+</launch>

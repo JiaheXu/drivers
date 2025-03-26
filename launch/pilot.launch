@@ -1,0 +1,29 @@
+<launch>
+	<!-- General params -->
+	<arg name="sim"           default="false" />
+	<arg name="headless"      default="true" />
+	<arg name="system_id"     default="$(optenv MMPUG_SYSTEM_ID rc1)" />
+	<arg name="tf_prefix"     default="$(arg system_id)_" />
+	<arg name="namespace"     default="/$(arg system_id)" />
+	<arg name="output"        default="screen" />
+	<arg name="log_output" default="screen" />
+
+	<group ns="$(arg namespace)">
+		<node pkg="mmpug_drivers_core" type="mmpug_vesc_interface" name="mmpug_vesc_interface" output="$(arg output)">
+			<param name="forward_scale_a" value="160" />
+			<param name="forward_scale_b" value="12" />
+			<param name="reverse_scale_a" value="160" />
+			<param name="reverse_scale_b" value="-12" />
+			<param name="arm_status" value="false" />
+
+			<param name="DEBUG" value="false" />
+
+			<param name="publish_ratio" value="50" />			
+			<param name="servo_upper_bound" value="1000" />
+			<param name="servo_lower_bound" value="0" />
+
+			<param name="rpm_scale" value="5000" />
+		</node>
+	</group>
+
+</launch>

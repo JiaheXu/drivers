@@ -1,0 +1,39 @@
+# See full plugin list: http://wiki.ros.org/mavros/Plugins
+plugin_blacklist:
+- '*'
+# common
+#- actuator_control
+#- ftp
+#- safety_area
+#- hil
+# extras
+#- altitude
+#- debug_value
+#- image_pub
+#- px4flow
+#- vibration
+#- vision_speed_estimate
+#- wheel_odometry
+#- 3dr_radio
+#- hil_controls
+#- command
+#- global_position
+#- imu_pub
+#- local_position
+#- manual_control
+#- rc_io
+#- safety_io
+#- setpoint_accel
+#- setpoint_attitude
+#- setpoint_position
+#- setpoint_raw
+#- setpoint_velocity
+#- sys_status
+#- sys_time
+#- vfr_hud
+
+plugin_whitelist:
+- manual_control
+- rc_io
+- command
+- sys_status

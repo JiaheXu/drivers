@@ -1,0 +1,77 @@
+<launch>
+    <arg name="output" default="screen" />
+    <arg name="stream_ids" default="[0,1,2,3,4,5]" />
+    <arg name="tf_prefix" default="" />
+
+    <arg name="width" default="480" />
+    <arg name="height" default="320" />
+    <arg name="frame_rate" default="12" />
+    <arg name="super_odom" default="false" />
+
+
+    <include file="$(find mmpug_drivers_core)/launch/cameras/camera.launch" if="$(eval '0' in stream_ids)">
+      <arg name="output" value="$(arg output)" />
+      <arg name="camera_id" value="0" />
+      <arg name="multicast_port" value="6000" />
+      <arg name="width" value="$(arg width)" />
+      <arg name="height" value="$(arg height)" />
+      <arg name="frame_rate" value="$(arg frame_rate)" />
+      <arg name="frame_id" value="$(arg tf_prefix)cam_0" />
+      <arg name="super_odom" value="$(arg super_odom)" />
+    </include>
+
+    <include file="$(find mmpug_drivers_core)/launch/cameras/camera.launch" if="$(eval '1' in stream_ids)">
+      <arg name="output" value="$(arg output)" />
+      <arg name="camera_id" value="1" />
+      <arg name="multicast_port" value="6001" />
+      <arg name="width" value="$(arg width)" />
+      <arg name="height" value="$(arg height)" />
+      <arg name="frame_rate" value="$(arg frame_rate)" />
+      <arg name="frame_id" value="$(arg tf_prefix)cam_1" />
+      <arg name="super_odom" value="$(arg super_odom)" />
+    </include>
+
+    <include file="$(find mmpug_drivers_core)/launch/cameras/camera.launch" if="$(eval '2' in stream_ids)">
+      <arg name="output" value="$(arg output)" />
+      <arg name="camera_id" value="2" />
+      <arg name="multicast_port" value="6002" />
+      <arg name="width" value="$(arg width)" />
+      <arg name="height" value="$(arg height)" />
+      <arg name="frame_rate" value="$(arg frame_rate)" />
+      <arg name="frame_id" value="$(arg tf_prefix)cam_2" />
+      <arg name="super_odom" value="$(arg super_odom)" />
+    </include>
+
+    <include file="$(find mmpug_drivers_core)/launch/cameras/camera.launch" if="$(eval '3' in stream_ids)">
+      <arg name="output" value="$(arg output)" />
+      <arg name="camera_id" value="3" />
+      <arg name="multicast_port" value="6003" />
+      <arg name="width" value="$(arg width)" />
+      <arg name="height" value="$(arg height)" />
+      <arg name="frame_rate" value="$(arg frame_rate)" />
+      <arg name="frame_id" value="$(arg tf_prefix)cam_3" />
+      <arg name="super_odom" value="$(arg super_odom)" />
+    </include>
+
+    <include file="$(find mmpug_drivers_core)/launch/cameras/camera.launch" if="$(eval '4' in stream_ids)">
+      <arg name="output" value="$(arg output)" />
+      <arg name="camera_id" value="4" />
+      <arg name="multicast_port" value="6004" />
+      <arg name="width" value="$(arg width)" />
+      <arg name="height" value="$(arg height)" />
+      <arg name="frame_rate" value="$(arg frame_rate)" />
+      <arg name="frame_id" value="$(arg tf_prefix)cam_4" />
+      <arg name="super_odom" value="$(arg super_odom)" />
+    </include>
+
+    <include file="$(find mmpug_drivers_core)/launch/cameras/camera.launch" if="$(eval '5' in stream_ids)">
+      <arg name="output" value="$(arg output)" />
+      <arg name="camera_id" value="5" />
+      <arg name="multicast_port" value="6005" />
+      <arg name="width" value="$(arg width)" />
+      <arg name="height" value="$(arg height)" />
+      <arg name="frame_rate" value="$(arg frame_rate)" />
+      <arg name="frame_id" value="$(arg tf_prefix)cam_5" />
+      <arg name="super_odom" value="$(arg super_odom)" />
+    </include>
+</launch>

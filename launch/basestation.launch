@@ -1,0 +1,22 @@
+<launch>
+    <arg name="system_id" default="$(optenv MMPUG_SYSTEM_ID default_id_basestation)" />
+    <arg name="tf_prefix"     default="$(arg system_id)_" />
+    <arg name="namespace"     default="/$(arg system_id)" />
+    <arg name="output"        default="screen" />
+
+    <arg name="launch_cameras" default="true" />
+    <arg name="launch_joy" default="true" />
+
+    <group ns="$(arg namespace)">
+        <include file="$(find mmpug_drivers_core)/launch/joy.launch" if="$(arg launch_joy)">
+            <arg name="output" value="$(arg output)" />
+        </include>
+    </group>
+
+    <group ns = "basestation">
+        <include file="$(find mmpug_drivers_core)/launch/cameras/multicast_streaming.launch" if="$(arg launch_cameras)">
+            <arg name="output" value="$(arg output)" />
+        </include>
+    </group>
+
+</launch>

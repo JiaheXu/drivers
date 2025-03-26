@@ -1,0 +1,222 @@
+#!/usr/bin/env python
+import rospy
+import math
+import time
+from mavros_msgs.msg import ManualControl, RCIn
+from geometry_msgs.msg import Twist, TwistStamped
+from std_msgs.msg import Bool
+from std_srvs.srv import SetBool, SetBoolResponse
+
+
+class MavTwistShim(object):
+    class Params():
+
+        # Used to calculate Steering angle 
+        wheel_base = 0.5
+        max_steering_angle = 0.524 # radians = 30 degrees
+
+        # Applied on /manual_control/send/y (to center the 
+        # steering wheel bc 0 is not straight, thanks pixhawk!)
+        forward_steering_trim = -90
+        reverse_steering_trim = 75
+        # Applied on forward command (linear.x > 0.0)
+        # Output control/z = linear.x * forward_scale_a + forward_scale_b
+        forward_scale_a = 143.
+        forward_scale_b = 27.
+
+        # Same but applied on reverse command (linear.x < 0.0)
+        reverse_scale_a = 143.
+        reverse_scale_b = 27.
+
+        # Inverts the signals directly before it is sent (after all scaling)
+        invert_linear_x = True
+        invert_angular_z = True
+
+
+        twist_input_topic = "twist_to_mav"
+        mavros_output_topic = "mavros/manual_control/send"
+        enable_service_name = "enable_shim"
+        enable_topic = "enable_shim"
+        rc_topic = "mavros/rc/in"
+        twist_stamped = True
+
+        start_enabled = True
+        rc_enable_idx = -1
+        rc_enable_value = 2064
+        allow_rc_disable = False
+
+        manual_override_topic = "manual_override"
+        reverse_steering = True
+        reverse_throttle = True
+
+        @staticmethod
+        def default():
+            return MavTwistShim.Params()
+
+        @staticmethod
+        def rosparams():
+            res = MavTwistShim.Params.default()
+            def get_param(param_name):
+                if rospy.has_param("~" + param_name):
+                    setattr(res, param_name, rospy.get_param("~" + param_name))
+
+            get_param("invert_linear_x")
+            get_param("invert_angular_z")
+            get_param("twist_input_topic")
+            get_param("mavros_output_topic")
+            get_param("start_enabled")
+            get_param("enable_service_name")
+            get_param("enable_topic")
+            get_param("twist_stamped")
+            get_param("rc_topic")
+            get_param("rc_enable_idx")
+            get_param("rc_enable_value")
+            get_param("allow_rc_disable")
+            get_param("reverse_steering")
+            get_param("reverse_throttle")
+
+            return res
+        
+    def __init__(self, params):
+        # TODO: add some state publishing
+        self.params = params
+        self.mav_pub = rospy.Publisher(self.params.mavros_output_topic, ManualControl, queue_size=1)
+        self.joy_sub = rospy.Subscriber(self.params.twist_input_topic, TwistStamped if self.params.twist_stamped else Twist, self.control_cb)
+        self.enable_sub = rospy.Subscriber(self.params.enable_topic, Bool, self.enable_cb)
+        self.enable_srv = rospy.Service(self.params.enable_service_name, SetBool, self.enable_srv_cb)
+        self.manual_sub = rospy.Subscriber(self.params.manual_override_topic,TwistStamped, self.manual_cb)
+        if self.params.rc_enable_idx >= 0:
+            self.rc_sub = rospy.Subscriber(self.params.rc_topic, RCIn, self.rc_cb)
+            self.last_rc_val = None
+
+        self.enabled = self.params.start_enabled
+        self.previous_direction = 0
+        self.current_timeout = time.time()
+        self.manual_command_timeout = 0.2
+        self.manual_override_active = False
+        self.manual_command_time = 0.0
+
+        self.last_command_time = 0.0
+        self.command_timeout = 0.2
+
+    def run(self):
+        r = rospy.Rate(50)
+
+        while not rospy.is_shutdown():
+            now = time.time()
+
+            if math.fabs(now - self.manual_command_time) > self.manual_command_timeout:
+                self.manual_override_active = False
+
+            if not self.manual_override_active and now - self.last_command_time > self.command_timeout:
+                rospy.logerr_throttle(3,"No Command in %3.2f seconds. Timed out!!!"%(self.command_timeout))
+                self.command_x = 0.
+                self.command_z = 0.
+
+
+            # Handle input from twist stamped or twist
+            input_throttle = self.command_x
+            input_steering_angle = self.command_z
+
+            # Steering angle...
+            output_steering_angle = 1000.0 * input_steering_angle / self.params.max_steering_angle
+
+            # Throttle...
+            candidate_throttle = input_throttle
+
+            # Apply conversion from m/s to throttle (0 -> 1000)
+            if candidate_throttle > 0.0:
+                candidate_throttle = candidate_throttle * self.params.forward_scale_a + self.params.forward_scale_b
+                if candidate_throttle < 0.0: # Make sure we are actually positive...
+                    candidate_throttle = 0.0
+                    rospy.logwarn_throttle(10, "Recieved velocity command: [%3.2f] which is less than min forward command..." % input_throttle)
+                if candidate_throttle > 1000.0:
+                    candidate_throttle = 1000.0
+                    rospy.logwarn_throttle(10, "Recieved velocity command: [%3.2f] which is greater than max forward command..." % input_throttle)
+                output_steering_angle += self.params.forward_steering_trim
+            if candidate_throttle < 0.0:
+                candidate_throttle = candidate_throttle * self.params.reverse_scale_a + self.params.reverse_scale_b
+                if candidate_throttle > 0.0: # Make sure we are negative...
+                    candidate_throttle = 0.0
+                    rospy.logwarn_throttle(10, "Recieved velocity command: [%3.2f] which is greater than max reverse command..." % input_throttle)
+                if candidate_throttle < -1000.0:
+                    candidate_throttle = -1000.0
+                    rospy.logwarn_throttle(10, "Recieved velocity command: [%3.2f] which is less than min reverse command..." % input_throttle)
+                output_steering_angle += self.params.reverse_steering_trim
+
+            self.publish_command(output_steering_angle, candidate_throttle)
+            r.sleep()
+
+    def publish_command(self, steering, throttle):
+        mav_msg = ManualControl()
+
+        if steering > 1000:
+            steering = 1000
+        elif steering < -1000:
+            steering = -1000
+
+        if throttle > 1000:
+            throttle = 1000
+        elif throttle < -1000:
+            throttle = -1000
+        mav_msg.y = steering
+        mav_msg.z = throttle
+
+        if self.params.reverse_steering:
+            mav_msg.y = -steering
+        if self.params.reverse_throttle:
+            mav_msg.z = -throttle
+
+        if self.enabled:
+            self.mav_pub.publish(mav_msg)
+        else:
+            rospy.logwarn_throttle(5, "Software control is currently disabled.")
+
+    def manual_cb(self, msg):
+        msg = msg.twist
+        self.manual_command_time = time.time()
+        self.manual_override_active = True
+        self.command_x = msg.linear.x
+        self.command_z = msg.angular.z
+
+    def enable_srv_cb(self, msg):
+        self.enabled = msg.data
+        return SetBoolResponse(True, "done")
+
+    def enable_cb(self, msg):
+        self.enabled = msg.data
+
+    def rc_cb(self, msg):
+        # Always use protection, kids.
+        if self.params.allow_rc_disable:
+            if len(msg.channels) <= self.params.rc_enable_idx:
+                rospy.logwarn_throttle(5, "RC Does not contain the enable index, too short. [%d] <= [%d]"%(len(msg.channels), self.params.rc_enable_idx))
+                return
+
+            rc_val = msg.channels[self.params.rc_enable_idx]
+            if self.last_rc_val == None or self.last_rc_val != rc_val:
+                # We only trigger when the value changes (allows for control via the service)
+                self.last_rc_val = rc_val
+                if rc_val == self.params.rc_enable_value:
+                    rospy.logwarn("Enabling control VIA RC.")
+                    self.enabled = True
+                else:
+                    rospy.logwarn("Disabling control VIA RC.")
+                    self.enabled = False
+
+    def control_cb(self, msg):
+        if self.manual_override_active:
+            return
+        if self.params.twist_stamped:
+            self.command_x = msg.twist.linear.x
+            self.command_z = msg.twist.angular.z
+        else:
+            self.command_x = msg.linear.x
+            self.command_z = msg.angular.z
+
+        self.last_command_time = time.time()
+
+if __name__ == "__main__":
+    rospy.init_node('joy_mav_shim')
+    node = MavTwistShim(MavTwistShim.Params.rosparams())
+    node.run()

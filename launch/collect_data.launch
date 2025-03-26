@@ -1,0 +1,28 @@
+<launch>
+    <arg name="system_id"     default="$(optenv MMPUG_SYSTEM_ID rc1)" />
+    <arg name="payload_serial" default="$(optenv MMPUG_PAYLOAD_SERIAL generic-payload)" />
+    <arg name="tf_prefix"     default="$(arg system_id)_" />
+    <arg name="namespace"     default="/$(arg system_id)" />
+    <arg name="output"        default="screen" />
+
+    <arg name="launch_imu" default="true" />
+    <arg name="launch_flir" default="false" />
+    <arg name="launch_cameras" default="true" />
+    <arg name="launch_velodyne" default="true" />
+
+
+    <group ns="$(arg namespace)">
+        <include file="$(find epson_imu_driver)/launch/epson_g365_rotated.launch" if="$(arg launch_imu)"/>
+
+        <include file="$(find flir_ros)/launch/flir_ros.launch" if="$(arg launch_flir)">
+            <arg name="output" value="$(arg output)" />
+        </include>
+
+        <include file="$(find image_sharing)/launch/argus_fisheye_master_camera.launch" if="$(arg launch_cameras)"/>
+
+        <include file="$(find velodyne_launch)/launch/velodyne.launch" if="$(arg launch_velodyne)">
+            <arg name="output" value="$(arg output)" />
+            <arg name="frame_id" value="$(arg tf_prefix)velodyne" />
+        </include>
+    </group>
+</launch>

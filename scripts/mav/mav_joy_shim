@@ -1,0 +1,255 @@
+#!/usr/bin/env python
+import rospy
+import math
+import time
+import yaml
+from mavros_msgs.msg import RCIn
+from mavros_msgs.srv import StreamRate, StreamRateResponse
+from sensor_msgs.msg import Joy
+
+"""
+A heck of a lot of config loading
+"""
+class JSConfig(object):
+    class Axe():
+        def __init__(self, data):
+            """
+            Load stuff from the data or default
+            """
+            if "joy" not in data:
+                raise Exception("Error: \"joy\" key MUST be in each Axe mapping.")
+            joy = data["joy"]
+            if "index" not in joy:
+                raise Exception("Error: \"index\" key MUST be in each joy section.")
+            self.index = joy["index"]
+            if "default" in joy:
+                self.default = joy["default"]
+            else:
+                self.default = 0.0
+            if "deadband" in joy:
+                self.deadband = joy["deadband"]
+            else:
+                self.deadband = 0.0
+            
+            if "mav" not in data:
+                self.mav = False
+            else:
+                self.mav = True
+                mav = data["mav"]
+                if "index" not in mav:
+                    raise Exception("Error: \"index\" key MUST be in each mav section.")
+                if "zero" not in mav:
+                    raise Exception("Error: \"index\" key MUST be in each Axe mav section.")
+                if "range" not in mav:
+                    raise Exception("Error: \"index\" key MUST be in each Axe mav section.")
+                self.mav_index = mav["index"]
+                self.mav_zero = mav["zero"]
+                self.mav_range = mav["range"]
+
+                if "invert" in mav:
+                    self.invert = mav["invert"]
+                else:
+                    self.invert = False
+    
+    class Button():
+        def __init__(self, data):
+            """
+            Load stuff from the data or default
+            """
+            if "joy" not in data:
+                raise Exception("Error: \"joy\" key MUST be in each Button mapping.")
+            joy = data["joy"]
+            if "index" not in joy:
+                raise Exception("Error: \"index\" key MUST be in each joy section.")
+            self.index = joy["index"]
+            if "default" in joy:
+                self.default = joy["default"]
+            else:
+                self.default = 0
+            
+            if "mav" not in data:
+                self.mav = False
+            else:
+                self.mav = True
+                mav = data["mav"]
+                if "index" not in mav:
+                    raise Exception("Error: \"index\" key MUST be in each mav section.")
+                if "enable_val" in mav and "disable_val" in mav:
+                    raise Exception("Error: only one of \"enable_val\" or \"disable_val\" can be in each Button mav section.")
+                
+                self.mav_index = mav["index"]
+
+                if "enable_val" in mav:
+                    self.enable_val = mav["enable_val"]
+                    self.disable_val = None
+                elif "disable_val" in mav:
+                    self.disable_val = mav["disable_val"]
+                    self.enable_val = None
+                else:
+                    raise Exception("Error: \"enable_val\" OR \"disable_val\" key MUST be in each Button mav section.")
+
+    axes_mapping = {}
+    button_mapping = {}
+
+    @staticmethod
+    def openFile(filename):
+        with open(filename, 'r') as f:
+            data = yaml.load(f)
+            return JSConfig(data)
+
+    def __init__(self, config):
+        if "axes" not in config and "buttons" not in config:
+            raise Exception("Error, either \"buttons\" or \"axes\" must be in config.")
+
+        if "axes" in config:
+            axes = config["axes"]
+            if "min_count" in axes:
+                self.axes_min_count = axes["min_count"]
+            
+            if "mapping" in axes:
+                max_index = -1
+                for entry in axes["mapping"]:
+                    axe = JSConfig.Axe(entry)
+                    if axe.index > max_index:
+                        max_index = axe.index
+                    if axe.index in self.axes_mapping:
+                        rospy.logwarn("WARNING: Button index [%d] is already mapped. Overwriting."%axe.index)
+                    self.axes_mapping[axe.index] = axe
+                
+                if "min_count" not in axes:
+                    self.axes_min_count = max_index + 1
+            elif "min_count" not in axes:
+                raise Exception("Error: either \"mapping\" or \"min_count\" must be defined in axes section.")
+
+        if "buttons" in config:
+            buttons = config["buttons"]
+            if "min_count" in buttons:
+                self.buttons_min_count = buttons["min_count"]
+            
+            if "mapping" in buttons:
+                max_index = -1
+                for entry in buttons["mapping"]:
+                    button = JSConfig.Button(entry)
+                    if button.index > max_index:
+                        max_index = button.index
+                    
+                    if button.index in self.button_mapping:
+                        rospy.logwarn("WARNING: Button index [%d] is already mapped. Overwriting."%button.index)
+                    self.button_mapping[button.index] = button
+                
+                if "min_count" not in axes or max_index + 1 > self.buttons_min_count:
+                    self.buttons_min_count = max_index + 1
+            elif "min_count" not in buttons:
+                raise Exception("Error: either \"mapping\" or \"min_count\" must be defined in buttons section.")
+
+"""
+Do stuff...
+"""
+class MavJoyShim(object):
+    class Params():
+        config = None
+
+        joy_topic = "/joy"
+        rc_topic = "/mavros/rc/in"
+
+        update_publish_rate = True
+        mavros_rate_service = "/mavros/set_stream_rate"
+
+        @staticmethod
+        def default():
+            return MavJoyShim.Params()
+
+        @staticmethod
+        def rosparams():
+            res = MavJoyShim.Params.default()
+            def get_param(param_name):
+                if rospy.has_param("~" + param_name):
+                    setattr(res, param_name, rospy.get_param("~" + param_name))
+
+            get_param("config")
+            get_param("joy_topic")
+            get_param("rc_topic")
+            get_param("update_publish_rate")
+            get_param("mavros_rate_service")
+
+            res.config = JSConfig.openFile(res.config)
+
+            return res
+        
+    def __init__(self, params):
+        self.params = params
+
+        if self.params.update_publish_rate:
+            rospy.logwarn("Waiting for mavros rate service [%s]."%self.params.mavros_rate_service)
+            rospy.wait_for_service(self.params.mavros_rate_service)
+            sp = rospy.ServiceProxy(self.params.mavros_rate_service, StreamRate)
+            try:
+                # StreamRate.STREAM_RC_CHANNELS = 3
+                # TODO: don't be dumb (it's very hard)
+                sp(3,40,True)
+                rospy.loginfo("Set the stream rate to [40].")
+            except Exception as err:
+                rospy.logerr("Error setting the stream rate: " + str(err))
+
+        self.joy_pub = rospy.Publisher(self.params.joy_topic, Joy, queue_size=1)
+        self.rc_sub = rospy.Subscriber(self.params.rc_topic, RCIn, self.rc_cb)
+
+    def run(self):
+        rospy.spin()
+
+    def rc_cb(self, msg):
+        joy_msg = Joy()
+
+        axes = [0.0 for i in range(self.params.config.axes_min_count)]
+        buttons = [0.0 for i in range(self.params.config.buttons_min_count)]
+
+        for axe_key in self.params.config.axes_mapping:
+            axe = self.params.config.axes_mapping[axe_key]
+
+            if axe.mav:
+                if axe.mav_index >= len(msg.channels):
+                    rospy.logerr("Joy axe [%d] cannnot be obtained from channel [%d] given RCIn of len(%d)"%(axe.index, axe.mav_index, len(msg.channels)))
+                    continue
+
+                input_val = msg.channels[axe.mav_index]
+                mapped_val = (input_val - axe.mav_zero) / float(axe.mav_range)
+
+                if axe.invert:
+                    mapped_val *= -1.0
+
+                if math.fabs(mapped_val) < math.fabs(axe.deadband):
+                    mapped_val = 0.0
+
+                axes[axe.index] = mapped_val
+            else:
+                axes[axe.index] = axe.default
+
+        for button_key in self.params.config.button_mapping:
+            button = self.params.config.button_mapping[button_key]
+
+            if button.mav:
+                if button.mav_index >= len(msg.channels):
+                    rospy.logerr("Button [%d] cannnot be obtained from channel [%d] given RCIn of len(%d)"%(button.index, button.mav_index, len(msg.channels)))
+                    continue
+
+                if button.enable_val != None:
+                    if msg.channels[button.mav_index] == button.enable_val:
+                        buttons[button.index] = 1
+                    else:
+                        buttons[button.index] = 0
+                else:
+                    if msg.channels[button.mav_index] == button.disable_val:
+                        buttons[button.index] = 0
+                    else:
+                        buttons[button.index] = 1
+            else:
+                buttons[button.index] = button.default
+
+        joy_msg.axes = axes
+        joy_msg.buttons = buttons
+        self.joy_pub.publish(joy_msg)
+
+if __name__ == "__main__":
+    rospy.init_node('mav_joy_shim')
+    node = MavJoyShim(MavJoyShim.Params.rosparams())
+    node.run()

@@ -1,0 +1,7 @@
+# Common configuration for APM2 autopilot
+#
+# node:
+startup_px4_usb_quirk: false
+
+# We aren't running anything....
+# for a default config checkout the mavros package

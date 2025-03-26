@@ -1,0 +1,50 @@
+<launch>
+	<!-- General params -->
+	<arg name="sim"           default="false" />
+	<arg name="headless"      default="true" />
+	<arg name="system_id"     default="$(optenv MMPUG_SYSTEM_ID rc1)" />
+	<arg name="tf_prefix"     default="$(arg system_id)_" />
+	<arg name="namespace"     default="/$(arg system_id)" />
+	<arg name="output"        default="screen" />
+	<arg name="log_output" default="screen" />
+
+	<!-- Mavros params -->
+	<arg name="fcu_url" default="/dev/mmpug/mmpug_serial:115200" />
+	<arg name="gcs_url" default="udp://0.0.0.0:14560@" />
+	<arg name="target_system_id" default="1" />
+	<arg name="target_component_id" default="1" />
+	<arg name="mav_system_id" default="255" />
+	<arg name="component_id" default="255" />
+	<arg name="pluginlists_yaml" default="$(find mmpug_drivers_core)/config/apm_pluginlists.yaml" />
+	<arg name="config_yaml" default="$(find mmpug_drivers_core)/config/apm_config.yaml" />
+	<arg name="fcu_protocol" default="v2.0" />
+	<arg name="respawn_mavros" default="false" />
+
+	<group ns="$(arg namespace)">
+		<node pkg="mavros" type="mavros_node" name="mavros" required="$(eval not respawn_mavros)" clear_params="true" output="$(arg output)" respawn="$(arg respawn_mavros)">
+			<param name="fcu_url" value="$(arg fcu_url)" />
+			<param name="gcs_url" value="$(arg gcs_url)" />
+			<param name="target_system_id" value="$(arg target_system_id)" />
+			<param name="target_component_id" value="$(arg target_component_id)" />
+			<param name="fcu_protocol" value="$(arg fcu_protocol)" />
+
+			<param name="system_id" value="$(arg mav_system_id)" />
+			<param name="component_id" value="$(arg component_id)" />
+
+			<!-- load blacklist, config -->
+			<rosparam command="load" file="$(arg pluginlists_yaml)" />
+			<rosparam command="load" file="$(arg config_yaml)" />
+		</node>
+
+		<node pkg="mmpug_drivers_core" type="mmpug_mav_interface" name="mmpug_mav_interface" output="$(arg output)">
+			<param name="forward_scale_a" value="160" />
+			<param name="forward_scale_b" value="12" />
+			<param name="reverse_scale_a" value="160" />
+			<param name="reverse_scale_b" value="-12" />
+		</node>
+
+		<node pkg="mmpug_drivers_core" type="battery_estimator" name="battery_estimator" output="$(arg output)">
+		</node>
+	</group>
+
+</launch>

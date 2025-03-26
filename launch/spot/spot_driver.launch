@@ -1,0 +1,23 @@
+<launch>
+  <arg name="system_id" default="$(optenv MMPUG_SYSTEM_ID cmu_sp1)" />
+
+  <arg name="username" default="mmpug" />
+  <arg name="password" default="passme243546" />
+  <!-- <arg name="hostname" default="spot-001" /> -->
+  <!-- <arg name="hostname" default="192.168.50.3" /> --> 
+  <arg name="hostname" default="10.3.1.30" />
+  
+  <group ns="$(arg system_id)">
+    <node pkg="spot_driver" type="spot_ros" name="spot_ros"  ns="spot" output="screen">
+      <rosparam file="$(find spot_driver)/config/spot_ros.yaml" command="load" />
+      <param name="username" value="$(arg username)" />
+      <param name="password" value="$(arg password)" />
+      <param name="hostname" value="$(arg hostname)" />
+      <remap from="joint_states" to="/joint_states"/>
+      <remap from="tf" to="/tf"/>
+    </node>
+
+    <node pkg="mmpug_drivers_core" type="mmpug_spot_interface" name="mmpug_spot_iface" output="screen">
+    </node>
+  </group>
+</launch>

@@ -1,0 +1,30 @@
+axes:
+  min_count: 6
+  mapping:
+  - joy:
+      index: 2
+      default: 0.0
+      deadband: 0.05
+    mav: 
+      index: 0
+      zero: 1512
+      range: 412
+      invert: true
+  - joy:
+      index: 3
+      default: 0.0
+      deadband: 0.05
+    mav: 
+      index: 1
+      zero: 1521
+      range: 417
+      invert: true
+buttons:
+  min_count: 13
+  mapping:
+  - joy:
+      index: 0
+      default: 1.0
+    mav:
+      index: 9
+      enable_val: 2064
